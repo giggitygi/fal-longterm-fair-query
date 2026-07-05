@@ -28,6 +28,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "local_epochs": 1,
         "batch_size": 64,
         "lr": 0.01,
+        "round_order": "train_eval_query",
+        "warmup_rounds": 0,
+        "warmup_client_scope": "all",
     },
     "active_learning": {
         "strategy": "entropy",
@@ -36,6 +39,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "lambda_q": 0.6,
         "lambda_r": 0.4,
         "memory_size": 2048,
+        "debt_target_mode": "available_equal",
     },
     "model": {
         "name": "simple_cnn",
