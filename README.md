@@ -128,11 +128,12 @@ E1/E2/E3 第一轮诊断已完成。若需要复跑本轮诊断：
 D:\conda\Scripts\conda.exe run -n te-fal python .\scripts\summarize_runs.py --dataset FashionMNIST --latest-per-strategy --aggregate-seeds --output .\runs\fal_longterm_fair_query\fashionmnist_fix_v3_multiseed_aggregate.csv
 ```
 
-当前不要直接迁移到 CIFAR-10。G3 复核后，`quota_red_entropy` 不再作为主 claim；participation stress test 已确认 p=0.5 支持 fairness claim、p=0.1 是失效边界。若需要复跑 stress test，可使用 `--participation-rate`：
+当前不要直接迁移到 CIFAR-10。G3 复核后，`quota_red_entropy` 不再作为主 claim；participation stress test 已确认 p=0.5 支持 fairness claim、p=0.1 是失效边界。`guarded_quota_entropy` 是边界感知修正：硬配额过激时退回 entropy。若需要复跑 stress test，可使用 `--participation-rate`：
 
 ```powershell
 D:\conda\Scripts\conda.exe run -n te-fal python .\scripts\run_no_go.py --config .\configs\fix_fashionmnist_v3.yaml --strategy entropy --seed 7 --participation-rate 0.5 --run-tag v3_participation0p5
 D:\conda\Scripts\conda.exe run -n te-fal python .\scripts\run_no_go.py --config .\configs\fix_fashionmnist_v3.yaml --strategy quota_entropy --seed 7 --participation-rate 0.5 --run-tag v3_participation0p5
+D:\conda\Scripts\conda.exe run -n te-fal python .\scripts\run_no_go.py --config .\configs\fix_fashionmnist_v3.yaml --strategy guarded_quota_entropy --seed 7 --participation-rate 0.5 --run-tag v3_guarded_p0p5
 ```
 
 ## 当前限制

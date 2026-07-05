@@ -62,6 +62,7 @@ def acquisition_scores(logits: torch.Tensor, strategy: str, rng: np.random.Gener
     if strategy in {
         "entropy",
         "quota_entropy",
+        "guarded_quota_entropy",
         "quota_red_entropy",
         "class_aware_quota_red",
         "debt_entropy",
@@ -119,6 +120,26 @@ def select_queries(
             query_budget,
             available_clients,
         )
+    if strategy == "guarded_quota_entropy":
+        local_quota_pressure = query_budget / max(1, len(available_clients) * candidate_pool_per_client)
+        if local_quota_pressure > 0.5:
+            return select_top_scores(
+                candidate_pairs,
+                embeddings,
+                predicted_labels,
+                base,
+                redundancy,
+                query_budget,
+            )
+        return select_with_quota(
+            candidate_pairs,
+            embeddings,
+            predicted_labels,
+            base,
+            redundancy,
+            query_budget,
+            available_clients,
+        )
     if strategy == "quota_red_entropy":
         quota_red_score = base - float(lambda_r) * redundancy
         return select_with_quota(
@@ -163,18 +184,7 @@ def select_queries(
     if strategy == "red_entropy":
         scores = scores - float(lambda_r) * redundancy
 
-    top_k = min(query_budget, len(candidate_pairs))
-    selected_positions = torch.topk(scores, k=top_k).indices.cpu().tolist()
-    selected = [candidate_pairs[pos] for pos in selected_positions]
-    selected_embeddings = embeddings[selected_positions].cpu()
-    selected_labels = predicted_labels[selected_positions].cpu()
-    mean_redundancy = float(redundancy[selected_positions].mean()) if selected_positions else 0.0
-    return SelectionResult(
-        selected=selected,
-        embeddings=selected_embeddings,
-        labels=selected_labels,
-        mean_redundancy=mean_redundancy,
-    )
+    return select_top_scores(candidate_pairs, embeddings, predicted_labels, scores, redundancy, query_budget)
 
 
 def sample_candidates(
@@ -254,6 +264,28 @@ def select_with_quota(
             fill_top = torch.topk(base[remaining], k=fill_k).indices.cpu().tolist()
             selected_positions.extend([remaining[pos] for pos in fill_top])
 
+    selected = [candidate_pairs[pos] for pos in selected_positions]
+    selected_embeddings = embeddings[selected_positions].cpu() if selected_positions else torch.empty(0, 64)
+    selected_labels = labels[selected_positions].cpu() if selected_positions else torch.empty(0, dtype=torch.long)
+    mean_redundancy = float(redundancy[selected_positions].mean()) if selected_positions else 0.0
+    return SelectionResult(
+        selected=selected,
+        embeddings=selected_embeddings,
+        labels=selected_labels,
+        mean_redundancy=mean_redundancy,
+    )
+
+
+def select_top_scores(
+    candidate_pairs: list[tuple[int, int]],
+    embeddings: torch.Tensor,
+    labels: torch.Tensor,
+    scores: torch.Tensor,
+    redundancy: torch.Tensor,
+    query_budget: int,
+) -> SelectionResult:
+    top_k = min(query_budget, len(candidate_pairs))
+    selected_positions = torch.topk(scores, k=top_k).indices.cpu().tolist()
     selected = [candidate_pairs[pos] for pos in selected_positions]
     selected_embeddings = embeddings[selected_positions].cpu() if selected_positions else torch.empty(0, 64)
     selected_labels = labels[selected_positions].cpu() if selected_positions else torch.empty(0, dtype=torch.long)
