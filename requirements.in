@@ -1,0 +1,8 @@
+--extra-index-url https://download.pytorch.org/whl/cu128
+numpy
+pandas
+PyYAML
+scikit-learn
+torch==2.11.0+cu128
+torchvision==0.26.0+cu128
+tqdm

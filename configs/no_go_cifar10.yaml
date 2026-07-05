@@ -1,0 +1,32 @@
+seed: 42
+device: cuda
+output_root: runs/fal_longterm_fair_query
+
+dataset:
+  name: CIFAR10
+  root: data/torchvision
+  download: true
+  max_train_samples: 20000
+  max_test_samples: 5000
+
+federated:
+  num_clients: 20
+  dirichlet_alpha: 0.3
+  initial_labels_per_client: 40
+  num_rounds: 50
+  participation_rate: 0.2
+  availability_skew: long_tail
+  local_epochs: 1
+  batch_size: 64
+  lr: 0.01
+
+active_learning:
+  strategy: entropy
+  query_budget: 100
+  candidate_pool_per_client: 100
+  lambda_q: 0.6
+  lambda_r: 0.4
+  memory_size: 4096
+
+model:
+  name: simple_cnn

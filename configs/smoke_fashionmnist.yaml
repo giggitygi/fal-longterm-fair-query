@@ -1,0 +1,32 @@
+seed: 42
+device: cuda
+output_root: runs/fal_longterm_fair_query
+
+dataset:
+  name: FashionMNIST
+  root: data/torchvision
+  download: true
+  max_train_samples: 500
+  max_test_samples: 200
+
+federated:
+  num_clients: 5
+  dirichlet_alpha: 0.5
+  initial_labels_per_client: 10
+  num_rounds: 1
+  participation_rate: 0.4
+  availability_skew: two_group
+  local_epochs: 1
+  batch_size: 32
+  lr: 0.01
+
+active_learning:
+  strategy: qfair
+  query_budget: 10
+  candidate_pool_per_client: 12
+  lambda_q: 0.6
+  lambda_r: 0.4
+  memory_size: 256
+
+model:
+  name: simple_cnn
