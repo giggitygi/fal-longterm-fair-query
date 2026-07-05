@@ -39,6 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lr", type=float, default=None)
     parser.add_argument("--local-epochs", type=int, default=None)
     parser.add_argument("--num-rounds", type=int, default=None)
+    parser.add_argument("--participation-rate", type=float, default=None)
     parser.add_argument("--warmup-rounds", type=int, default=None)
     parser.add_argument("--optimizer", choices=["sgd", "adam"], default=None)
     parser.add_argument("--dirichlet-alpha", type=float, default=None)
@@ -101,6 +102,8 @@ def main() -> None:
         config["federated"]["local_epochs"] = args.local_epochs
     if args.num_rounds is not None:
         config["federated"]["num_rounds"] = args.num_rounds
+    if args.participation_rate is not None:
+        config["federated"]["participation_rate"] = args.participation_rate
     if args.warmup_rounds is not None:
         config["federated"]["warmup_rounds"] = args.warmup_rounds
     if args.optimizer is not None:

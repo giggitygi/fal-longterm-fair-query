@@ -108,18 +108,18 @@ D:\conda\Scripts\conda.exe run -n te-fal python .\scripts\summarize_runs.py --da
 
 ### Fix V3：下一步实验命令
 
-先做训练稳定性扫描，不上 CIFAR-10：
+训练稳定性扫描已确认 Adam lr=0.003 是当前 Fashion-MNIST V3 的默认稳定协议；SGD lr=0.01/0.02/0.05 未通过 E0 gate。确认命令：
 
 ```powershell
-D:\conda\Scripts\conda.exe run -n te-fal python .\scripts\run_no_go.py --config .\configs\fix_fashionmnist_v3.yaml --strategy entropy --seed 7 --lr 0.01 --local-epochs 2 --warmup-rounds 5 --optimizer sgd --run-tag e0_lr001
-D:\conda\Scripts\conda.exe run -n te-fal python .\scripts\run_no_go.py --config .\configs\fix_fashionmnist_v3.yaml --strategy entropy --seed 42 --lr 0.01 --local-epochs 2 --warmup-rounds 5 --optimizer sgd --run-tag e0_lr001
-D:\conda\Scripts\conda.exe run -n te-fal python .\scripts\run_no_go.py --config .\configs\fix_fashionmnist_v3.yaml --strategy entropy --seed 123 --lr 0.01 --local-epochs 2 --warmup-rounds 5 --optimizer sgd --run-tag e0_lr001
+D:\conda\Scripts\conda.exe run -n te-fal python .\scripts\run_no_go.py --config .\configs\fix_fashionmnist_v3.yaml --strategy entropy --seed 7 --run-tag e0_adam_lr0p003_confirm
+D:\conda\Scripts\conda.exe run -n te-fal python .\scripts\run_no_go.py --config .\configs\fix_fashionmnist_v3.yaml --strategy entropy --seed 42 --run-tag e0_adam_lr0p003_confirm
+D:\conda\Scripts\conda.exe run -n te-fal python .\scripts\run_no_go.py --config .\configs\fix_fashionmnist_v3.yaml --strategy entropy --seed 123 --run-tag e0_adam_lr0p003_confirm
 ```
 
-如果 E0 通过，再跑 fairness / redundancy 主诊断：
+E1/E2/E3 第一轮诊断已完成。若需要复跑本轮诊断：
 
 ```powershell
-.\scripts\run_strategy_matrix.ps1 -Config .\configs\fix_fashionmnist_v3.yaml -Seeds 7,42,123 -Strategies entropy,quota_entropy,quota_red_entropy,class_aware_quota_red
+.\scripts\run_strategy_matrix.ps1 -Config .\configs\fix_fashionmnist_v3.yaml -Seeds 7,42,123 -Strategies entropy,quota_entropy,quota_red_entropy,class_aware_quota_red,qfair,red_entropy
 ```
 
 汇总：
@@ -128,12 +128,11 @@ D:\conda\Scripts\conda.exe run -n te-fal python .\scripts\run_no_go.py --config 
 D:\conda\Scripts\conda.exe run -n te-fal python .\scripts\summarize_runs.py --dataset FashionMNIST --latest-per-strategy --aggregate-seeds --output .\runs\fal_longterm_fair_query\fashionmnist_fix_v3_multiseed_aggregate.csv
 ```
 
-如果 G2 通过，再迁移到 CIFAR-10 quick：
+当前不要直接迁移到 CIFAR-10。G3 复核后，`quota_red_entropy` 不再作为主 claim；participation stress test 已确认 p=0.5 支持 fairness claim、p=0.1 是失效边界。若需要复跑 stress test，可使用 `--participation-rate`：
 
 ```powershell
-D:\conda\Scripts\conda.exe run -n te-fal python .\scripts\run_no_go.py --config .\configs\diagnostic_cifar10_quick.yaml --strategy entropy
-D:\conda\Scripts\conda.exe run -n te-fal python .\scripts\run_no_go.py --config .\configs\diagnostic_cifar10_quick.yaml --strategy quota_red_entropy
-D:\conda\Scripts\conda.exe run -n te-fal python .\scripts\run_no_go.py --config .\configs\diagnostic_cifar10_quick.yaml --strategy qfair
+D:\conda\Scripts\conda.exe run -n te-fal python .\scripts\run_no_go.py --config .\configs\fix_fashionmnist_v3.yaml --strategy entropy --seed 7 --participation-rate 0.5 --run-tag v3_participation0p5
+D:\conda\Scripts\conda.exe run -n te-fal python .\scripts\run_no_go.py --config .\configs\fix_fashionmnist_v3.yaml --strategy quota_entropy --seed 7 --participation-rate 0.5 --run-tag v3_participation0p5
 ```
 
 ## 当前限制

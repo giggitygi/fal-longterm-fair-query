@@ -18,8 +18,8 @@ federated:
   availability_skew: long_tail
   local_epochs: 2
   batch_size: 64
-  lr: 0.02
-  optimizer: sgd
+  lr: 0.003
+  optimizer: adam
   round_order: query_train_eval
   warmup_rounds: 5
   warmup_client_scope: all
