@@ -36,6 +36,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--lambda-q", type=float, default=None)
     parser.add_argument("--lambda-r", type=float, default=None)
+    parser.add_argument("--lr", type=float, default=None)
+    parser.add_argument("--local-epochs", type=int, default=None)
+    parser.add_argument("--num-rounds", type=int, default=None)
+    parser.add_argument("--warmup-rounds", type=int, default=None)
+    parser.add_argument("--optimizer", choices=["sgd", "adam"], default=None)
+    parser.add_argument("--dirichlet-alpha", type=float, default=None)
     parser.add_argument("--run-tag", default=None)
     parser.add_argument("--output-root", default=None)
     return parser.parse_args()
@@ -89,6 +95,18 @@ def main() -> None:
         config["active_learning"]["lambda_q"] = args.lambda_q
     if args.lambda_r is not None:
         config["active_learning"]["lambda_r"] = args.lambda_r
+    if args.lr is not None:
+        config["federated"]["lr"] = args.lr
+    if args.local_epochs is not None:
+        config["federated"]["local_epochs"] = args.local_epochs
+    if args.num_rounds is not None:
+        config["federated"]["num_rounds"] = args.num_rounds
+    if args.warmup_rounds is not None:
+        config["federated"]["warmup_rounds"] = args.warmup_rounds
+    if args.optimizer is not None:
+        config["federated"]["optimizer"] = args.optimizer
+    if args.dirichlet_alpha is not None:
+        config["federated"]["dirichlet_alpha"] = args.dirichlet_alpha
     if args.output_root:
         config["output_root"] = args.output_root
 
@@ -156,6 +174,7 @@ def main() -> None:
             batch_size=int(fed_cfg["batch_size"]),
             lr=float(fed_cfg["lr"]),
             epochs=int(fed_cfg["local_epochs"]),
+            optimizer_name=fed_cfg.get("optimizer", "sgd"),
         )
 
     metrics_path = run_dir / "round_metrics.csv"
@@ -202,6 +221,7 @@ def main() -> None:
                     batch_size=int(fed_cfg["batch_size"]),
                     lr=float(fed_cfg["lr"]),
                     epochs=int(fed_cfg["local_epochs"]),
+                    optimizer_name=fed_cfg.get("optimizer", "sgd"),
                 )
             pre_query_eval = evaluate(model, test_dataset, device=device, batch_size=int(fed_cfg["batch_size"]))
             selection = select_queries(
@@ -226,7 +246,7 @@ def main() -> None:
                 selected_by_client.setdefault(client_id, []).append(sample_idx)
             for client_id, sample_indices in selected_by_client.items():
                 clients[client_id].add_labels(sample_indices)
-            memory.add(selection.embeddings)
+            memory.add(selection.embeddings, selection.labels)
             debt = update_debt(
                 debt=debt,
                 available_clients=available,
@@ -246,6 +266,7 @@ def main() -> None:
                     batch_size=int(fed_cfg["batch_size"]),
                     lr=float(fed_cfg["lr"]),
                     epochs=int(fed_cfg["local_epochs"]),
+                    optimizer_name=fed_cfg.get("optimizer", "sgd"),
                 )
                 eval_result = evaluate(model, test_dataset, device=device, batch_size=int(fed_cfg["batch_size"]))
             else:

@@ -57,8 +57,9 @@ D:\conda\Scripts\conda.exe run -n te-fal python .\scripts\run_no_go.py --config 
 最新本地结论见：
 
 - `D:\DeskTop\te\04_validation\no_go_results\fal_fashionmnist_fix_v2_20260705.md`
+- `D:\DeskTop\te\05_outputs\paper_plans\fal_longterm_fair_query\03_experiment_design.md`
 
-当前状态仍是 **Narrow / Fix before Go**。不要直接进入 CIFAR-10 主实验；先稳定 Fashion-MNIST 训练，并验证 `quota_entropy`、`quota_red_entropy`、`qfair` 的三 seed trade-off 是否真实。
+当前状态仍是 **Narrow / Fix before Go**。不要直接进入 CIFAR-10 主实验；先稳定 Fashion-MNIST 训练，并验证 `quota_entropy`、`quota_red_entropy`、`class_aware_quota_red` 的三 seed trade-off 是否真实。当前 `qfair` 只保留为诊断 baseline。
 
 ### G0：协议 sanity
 
@@ -103,6 +104,28 @@ D:\conda\Scripts\conda.exe run -n te-fal python .\scripts\summarize_runs.py --da
 
 ```powershell
 D:\conda\Scripts\conda.exe run -n te-fal python .\scripts\summarize_runs.py --dataset FashionMNIST --latest-per-strategy --aggregate-seeds --output .\runs\fal_longterm_fair_query\fashionmnist_fix_v2_multiseed_aggregate.csv
+```
+
+### Fix V3：下一步实验命令
+
+先做训练稳定性扫描，不上 CIFAR-10：
+
+```powershell
+D:\conda\Scripts\conda.exe run -n te-fal python .\scripts\run_no_go.py --config .\configs\fix_fashionmnist_v3.yaml --strategy entropy --seed 7 --lr 0.01 --local-epochs 2 --warmup-rounds 5 --optimizer sgd --run-tag e0_lr001
+D:\conda\Scripts\conda.exe run -n te-fal python .\scripts\run_no_go.py --config .\configs\fix_fashionmnist_v3.yaml --strategy entropy --seed 42 --lr 0.01 --local-epochs 2 --warmup-rounds 5 --optimizer sgd --run-tag e0_lr001
+D:\conda\Scripts\conda.exe run -n te-fal python .\scripts\run_no_go.py --config .\configs\fix_fashionmnist_v3.yaml --strategy entropy --seed 123 --lr 0.01 --local-epochs 2 --warmup-rounds 5 --optimizer sgd --run-tag e0_lr001
+```
+
+如果 E0 通过，再跑 fairness / redundancy 主诊断：
+
+```powershell
+.\scripts\run_strategy_matrix.ps1 -Config .\configs\fix_fashionmnist_v3.yaml -Seeds 7,42,123 -Strategies entropy,quota_entropy,quota_red_entropy,class_aware_quota_red
+```
+
+汇总：
+
+```powershell
+D:\conda\Scripts\conda.exe run -n te-fal python .\scripts\summarize_runs.py --dataset FashionMNIST --latest-per-strategy --aggregate-seeds --output .\runs\fal_longterm_fair_query\fashionmnist_fix_v3_multiseed_aggregate.csv
 ```
 
 如果 G2 通过，再迁移到 CIFAR-10 quick：

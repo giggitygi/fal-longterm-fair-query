@@ -28,6 +28,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "local_epochs": 1,
         "batch_size": 64,
         "lr": 0.01,
+        "optimizer": "sgd",
         "round_order": "train_eval_query",
         "warmup_rounds": 0,
         "warmup_client_scope": "all",

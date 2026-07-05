@@ -19,6 +19,7 @@ def train_one_client(
     batch_size: int,
     lr: float,
     epochs: int,
+    optimizer_name: str,
 ) -> tuple[OrderedDict[str, torch.Tensor], int]:
     if not indices:
         return copy.deepcopy(global_model.state_dict()), 0
@@ -26,7 +27,12 @@ def train_one_client(
     model = copy.deepcopy(global_model).to(device)
     model.train()
     loader = DataLoader(Subset(dataset, indices), batch_size=batch_size, shuffle=True)
-    optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
+    if optimizer_name == "sgd":
+        optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
+    elif optimizer_name == "adam":
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    else:
+        raise ValueError(f"Unsupported optimizer: {optimizer_name}")
     criterion = nn.CrossEntropyLoss()
 
     for _ in range(epochs):
@@ -49,11 +55,21 @@ def federated_train_round(
     batch_size: int,
     lr: float,
     epochs: int,
+    optimizer_name: str = "sgd",
 ) -> nn.Module:
     local_states: list[tuple[OrderedDict[str, torch.Tensor], int]] = []
     for client_id in available_clients:
         indices = clients[client_id].labeled_indices()
-        state, sample_count = train_one_client(model, dataset, indices, device, batch_size, lr, epochs)
+        state, sample_count = train_one_client(
+            global_model=model,
+            dataset=dataset,
+            indices=indices,
+            device=device,
+            batch_size=batch_size,
+            lr=lr,
+            epochs=epochs,
+            optimizer_name=optimizer_name,
+        )
         if sample_count > 0:
             local_states.append((state, sample_count))
 

@@ -15,6 +15,7 @@ from .data import ClientPool
 class SelectionResult:
     selected: list[tuple[int, int]]
     embeddings: torch.Tensor
+    labels: torch.Tensor
     mean_redundancy: float
 
 
@@ -22,24 +23,34 @@ class QueryMemory:
     def __init__(self, max_size: int) -> None:
         self.max_size = max_size
         self.embeddings: torch.Tensor | None = None
+        self.labels: torch.Tensor | None = None
 
-    def redundancy(self, embeddings: torch.Tensor) -> torch.Tensor:
+    def redundancy(self, embeddings: torch.Tensor, labels: torch.Tensor | None = None) -> torch.Tensor:
         if self.embeddings is None or self.embeddings.numel() == 0:
             return torch.zeros(embeddings.shape[0])
         memory = F.normalize(self.embeddings, dim=1)
         current = F.normalize(embeddings.cpu(), dim=1)
-        return (current @ memory.T).max(dim=1).values.clamp(min=0.0)
+        similarities = current @ memory.T
+        if labels is not None and self.labels is not None:
+            label_mask = labels.cpu().view(-1, 1) == self.labels.view(1, -1)
+            similarities = similarities.masked_fill(~label_mask, -1.0)
+        return similarities.max(dim=1).values.clamp(min=0.0)
 
-    def add(self, embeddings: torch.Tensor) -> None:
+    def add(self, embeddings: torch.Tensor, labels: torch.Tensor) -> None:
         embeddings = embeddings.detach().cpu()
+        labels = labels.detach().cpu().long()
         if embeddings.numel() == 0:
             return
         if self.embeddings is None:
             self.embeddings = embeddings
+            self.labels = labels
         else:
             self.embeddings = torch.cat([self.embeddings, embeddings], dim=0)
+            self.labels = torch.cat([self.labels, labels], dim=0) if self.labels is not None else labels
         if self.embeddings.shape[0] > self.max_size:
             self.embeddings = self.embeddings[-self.max_size :]
+            if self.labels is not None:
+                self.labels = self.labels[-self.max_size :]
 
 
 def acquisition_scores(logits: torch.Tensor, strategy: str, rng: np.random.Generator) -> torch.Tensor:
@@ -48,7 +59,15 @@ def acquisition_scores(logits: torch.Tensor, strategy: str, rng: np.random.Gener
     probs = logits.softmax(dim=1)
     entropy = -(probs * (probs + 1e-12).log()).sum(dim=1)
     entropy = entropy / np.log(logits.shape[1])
-    if strategy in {"entropy", "quota_entropy", "quota_red_entropy", "debt_entropy", "red_entropy", "qfair"}:
+    if strategy in {
+        "entropy",
+        "quota_entropy",
+        "quota_red_entropy",
+        "class_aware_quota_red",
+        "debt_entropy",
+        "red_entropy",
+        "qfair",
+    }:
         return entropy.cpu()
     if strategy == "margin":
         top2 = torch.topk(probs, k=2, dim=1).values
@@ -76,23 +95,58 @@ def select_queries(
 ) -> SelectionResult:
     candidate_pairs = sample_candidates(clients, available_clients, candidate_pool_per_client, rng)
     if not candidate_pairs:
-        return SelectionResult(selected=[], embeddings=torch.empty(0, 64), mean_redundancy=0.0)
+        return SelectionResult(
+            selected=[],
+            embeddings=torch.empty(0, 64),
+            labels=torch.empty(0, dtype=torch.long),
+            mean_redundancy=0.0,
+        )
 
     all_indices = [idx for _, idx in candidate_pairs]
     logits, embeddings = score_dataset(model, dataset, all_indices, device, batch_size)
+    predicted_labels = logits.argmax(dim=1).cpu()
     base = acquisition_scores(logits, strategy, rng)
     redundancy = query_memory.redundancy(embeddings)
+    class_redundancy = query_memory.redundancy(embeddings, labels=predicted_labels)
 
     if strategy == "quota_entropy":
-        return select_with_quota(candidate_pairs, embeddings, base, redundancy, query_budget, available_clients)
+        return select_with_quota(
+            candidate_pairs,
+            embeddings,
+            predicted_labels,
+            base,
+            redundancy,
+            query_budget,
+            available_clients,
+        )
     if strategy == "quota_red_entropy":
         quota_red_score = base - float(lambda_r) * redundancy
-        return select_with_quota(candidate_pairs, embeddings, quota_red_score, redundancy, query_budget, available_clients)
+        return select_with_quota(
+            candidate_pairs,
+            embeddings,
+            predicted_labels,
+            quota_red_score,
+            redundancy,
+            query_budget,
+            available_clients,
+        )
+    if strategy == "class_aware_quota_red":
+        class_red_score = base - float(lambda_r) * class_redundancy
+        return select_with_quota(
+            candidate_pairs,
+            embeddings,
+            predicted_labels,
+            class_red_score,
+            class_redundancy,
+            query_budget,
+            available_clients,
+        )
     if strategy == "qfair":
         qfair_score = base - float(lambda_r) * redundancy
         return select_with_debt_quota(
             candidate_pairs=candidate_pairs,
             embeddings=embeddings,
+            labels=predicted_labels,
             scores=qfair_score,
             redundancy=redundancy,
             query_budget=query_budget,
@@ -113,8 +167,14 @@ def select_queries(
     selected_positions = torch.topk(scores, k=top_k).indices.cpu().tolist()
     selected = [candidate_pairs[pos] for pos in selected_positions]
     selected_embeddings = embeddings[selected_positions].cpu()
+    selected_labels = predicted_labels[selected_positions].cpu()
     mean_redundancy = float(redundancy[selected_positions].mean()) if selected_positions else 0.0
-    return SelectionResult(selected=selected, embeddings=selected_embeddings, mean_redundancy=mean_redundancy)
+    return SelectionResult(
+        selected=selected,
+        embeddings=selected_embeddings,
+        labels=selected_labels,
+        mean_redundancy=mean_redundancy,
+    )
 
 
 def sample_candidates(
@@ -168,6 +228,7 @@ def normalize_debt(debt: np.ndarray) -> np.ndarray:
 def select_with_quota(
     candidate_pairs: list[tuple[int, int]],
     embeddings: torch.Tensor,
+    labels: torch.Tensor,
     base: torch.Tensor,
     redundancy: torch.Tensor,
     query_budget: int,
@@ -195,13 +256,20 @@ def select_with_quota(
 
     selected = [candidate_pairs[pos] for pos in selected_positions]
     selected_embeddings = embeddings[selected_positions].cpu() if selected_positions else torch.empty(0, 64)
+    selected_labels = labels[selected_positions].cpu() if selected_positions else torch.empty(0, dtype=torch.long)
     mean_redundancy = float(redundancy[selected_positions].mean()) if selected_positions else 0.0
-    return SelectionResult(selected=selected, embeddings=selected_embeddings, mean_redundancy=mean_redundancy)
+    return SelectionResult(
+        selected=selected,
+        embeddings=selected_embeddings,
+        labels=selected_labels,
+        mean_redundancy=mean_redundancy,
+    )
 
 
 def select_with_debt_quota(
     candidate_pairs: list[tuple[int, int]],
     embeddings: torch.Tensor,
+    labels: torch.Tensor,
     scores: torch.Tensor,
     redundancy: torch.Tensor,
     query_budget: int,
@@ -215,7 +283,12 @@ def select_with_debt_quota(
 
     eligible_clients = [client_id for client_id in available_clients if positions_by_client.get(client_id)]
     if not eligible_clients:
-        return SelectionResult(selected=[], embeddings=torch.empty(0, 64), mean_redundancy=0.0)
+        return SelectionResult(
+            selected=[],
+            embeddings=torch.empty(0, 64),
+            labels=torch.empty(0, dtype=torch.long),
+            mean_redundancy=0.0,
+        )
 
     caps = {client_id: len(positions_by_client[client_id]) for client_id in eligible_clients}
     debt_norm = normalize_debt(debt)
@@ -234,8 +307,14 @@ def select_with_debt_quota(
 
     selected = [candidate_pairs[pos] for pos in selected_positions]
     selected_embeddings = embeddings[selected_positions].cpu() if selected_positions else torch.empty(0, 64)
+    selected_labels = labels[selected_positions].cpu() if selected_positions else torch.empty(0, dtype=torch.long)
     mean_redundancy = float(redundancy[selected_positions].mean()) if selected_positions else 0.0
-    return SelectionResult(selected=selected, embeddings=selected_embeddings, mean_redundancy=mean_redundancy)
+    return SelectionResult(
+        selected=selected,
+        embeddings=selected_embeddings,
+        labels=selected_labels,
+        mean_redundancy=mean_redundancy,
+    )
 
 
 def allocate_quotas(caps: dict[int, int], weights: dict[int, float], query_budget: int) -> dict[int, int]:

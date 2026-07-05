@@ -83,9 +83,14 @@ def main() -> None:
                 "best_redundancy": redundancy_df["mean_redundancy"].min(),
                 "final_labeled_total": last["labeled_total"],
                 "num_clients": fed_cfg.get("num_clients", ""),
+                "dirichlet_alpha": fed_cfg.get("dirichlet_alpha", ""),
+                "num_rounds": fed_cfg.get("num_rounds", ""),
                 "participation_rate": fed_cfg.get("participation_rate", ""),
                 "round_order": fed_cfg.get("round_order", ""),
                 "warmup_rounds": fed_cfg.get("warmup_rounds", ""),
+                "local_epochs": fed_cfg.get("local_epochs", ""),
+                "lr": fed_cfg.get("lr", ""),
+                "optimizer": fed_cfg.get("optimizer", ""),
                 "query_budget": al_cfg.get("query_budget", ""),
                 "lambda_q": al_cfg.get("lambda_q", ""),
                 "lambda_r": al_cfg.get("lambda_r", ""),
@@ -100,7 +105,21 @@ def main() -> None:
         return
 
     if args.latest_per_strategy:
-        group_cols = ["dataset", "availability_skew", "seed", "strategy", "lambda_q", "lambda_r"]
+        group_cols = [
+            "dataset",
+            "availability_skew",
+            "seed",
+            "strategy",
+            "dirichlet_alpha",
+            "num_rounds",
+            "round_order",
+            "warmup_rounds",
+            "local_epochs",
+            "lr",
+            "optimizer",
+            "lambda_q",
+            "lambda_r",
+        ]
         summary = summary.sort_values("run").groupby(group_cols, as_index=False).tail(1)
 
     if args.aggregate_seeds:
@@ -122,7 +141,23 @@ def main() -> None:
             "best_redundancy",
         ]
         summary = (
-            summary.groupby(["dataset", "availability_skew", "strategy", "lambda_q", "lambda_r"], as_index=False)
+            summary.groupby(
+                [
+                    "dataset",
+                    "availability_skew",
+                    "strategy",
+                    "dirichlet_alpha",
+                    "num_rounds",
+                    "round_order",
+                    "warmup_rounds",
+                    "local_epochs",
+                    "lr",
+                    "optimizer",
+                    "lambda_q",
+                    "lambda_r",
+                ],
+                as_index=False,
+            )
             .agg(
                 seeds=("seed", "nunique"),
                 **{f"{metric}_mean": (metric, "mean") for metric in metrics},
